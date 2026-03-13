@@ -7,7 +7,6 @@ ttstt 개발 환경 설정, 빌드, 배포 방법을 설명한다.
 - macOS (Apple Silicon)
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/)
-- ffmpeg (`brew install ffmpeg`)
 - Xcode Command Line Tools
 
 ## 개발 환경 설정
@@ -15,7 +14,7 @@ ttstt 개발 환경 설정, 빌드, 배포 방법을 설명한다.
 ```bash
 git clone https://github.com/cmygray/ttstt.git
 cd ttstt
-uv sync --extra dev
+uv sync --extra dev --prerelease=allow
 ```
 
 ## 실행
@@ -132,12 +131,6 @@ gh release create v0.1.0 \
 ### "이벤트 탭 생성 실패"
 
 접근성 권한이 없음. 시스템 설정에서 허용 후 재실행.
-
-### "ffmpeg not found"
-
-```bash
-brew install ffmpeg
-```
 
 ### 첫 실행이 느림
 
