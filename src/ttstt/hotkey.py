@@ -164,18 +164,12 @@ def listen_tap_hold(
         """타이머 콜백: threshold 경과 후에도 키가 눌려있으면 녹음 시작."""
         if state["pressed"] and not state["holding"]:
             state["holding"] = True
+            # 미리 주입된 키를 백스페이스로 제거
+            bs_down = Quartz.CGEventCreateKeyboardEvent(None, 0x33, True)
+            bs_up = Quartz.CGEventCreateKeyboardEvent(None, 0x33, False)
+            Quartz.CGEventPost(Quartz.kCGHIDEventTap, bs_down)
+            Quartz.CGEventPost(Quartz.kCGHIDEventTap, bs_up)
             on_start()
-
-    def _inject_key(flags):
-        """원래 키 이벤트를 재주입한다 (짧은 탭 시)."""
-        state["inject_count"] = 2
-        down = Quartz.CGEventCreateKeyboardEvent(None, target_keycode, True)
-        up = Quartz.CGEventCreateKeyboardEvent(None, target_keycode, False)
-        if flags:
-            Quartz.CGEventSetFlags(down, flags)
-            Quartz.CGEventSetFlags(up, flags)
-        Quartz.CGEventPost(Quartz.kCGHIDEventTap, down)
-        Quartz.CGEventPost(Quartz.kCGHIDEventTap, up)
 
     def callback(proxy, event_type, event, refcon):
         if event_type == Quartz.kCGEventTapDisabledByTimeout:
@@ -209,9 +203,14 @@ def listen_tap_hold(
             if state["holding"]:
                 return None
 
-            # 키 누름 시작 — 이벤트 소비하고 타이머 시작
+            # 키 누름 시작 — 즉시 키 다운 주입하고 타이머 시작
             state["pressed"] = True
             state["press_flags"] = flags
+            state["inject_count"] = 1
+            down = Quartz.CGEventCreateKeyboardEvent(
+                None, target_keycode, True
+            )
+            Quartz.CGEventPost(Quartz.kCGHIDEventTap, down)
             if state["timer"]:
                 state["timer"].cancel()
             timer = threading.Timer(hold_threshold, _start_if_held)
@@ -236,8 +235,12 @@ def listen_tap_hold(
                 on_stop()
                 return None
             else:
-                # 짧은 탭 → 원래 키 이벤트 재주입
-                _inject_key(state["press_flags"])
+                # 짧은 탭 → 키 다운은 이미 주입됨, 키 업만 주입
+                state["inject_count"] = 1
+                up = Quartz.CGEventCreateKeyboardEvent(
+                    None, target_keycode, False
+                )
+                Quartz.CGEventPost(Quartz.kCGHIDEventTap, up)
                 return None
 
         return event
