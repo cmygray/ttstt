@@ -72,6 +72,9 @@ def _simulate_cmd_v() -> None:
     Quartz.CGEventPost(Quartz.kCGAnnotatedSessionEventTap, up)
 
 
+_last_text: str | None = None
+
+
 def paste_text(text: str) -> None:
     """Clipboard swap 패턴으로 텍스트를 현재 포커스 위치에 붙여넣는다.
 
@@ -81,8 +84,22 @@ def paste_text(text: str) -> None:
     4. 잠시 대기 (붙여넣기 처리 시간)
     5. 원래 클립보드 복원
     """
+    global _last_text
+    _last_text = text
     backup = _backup()
     _set_string(text)
     _simulate_cmd_v()
     time.sleep(0.15)
     _restore(backup)
+
+
+def repaste_last() -> bool:
+    """마지막 전사 텍스트를 다시 붙여넣는다.
+
+    Returns:
+        True면 재붙여넣기 성공, False면 저장된 텍스트 없음.
+    """
+    if _last_text is None:
+        return False
+    paste_text(_last_text)
+    return True

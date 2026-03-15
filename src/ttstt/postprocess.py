@@ -53,7 +53,7 @@ def correct(text: str, config: PostprocessConfig) -> str:
 
     messages = [
         {"role": "system", "content": config.system_prompt},
-        {"role": "user", "content": text},
+        {"role": "user", "content": text + " /no_think"},
     ]
 
     prompt = tokenizer.apply_chat_template(

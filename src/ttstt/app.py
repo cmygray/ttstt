@@ -48,6 +48,11 @@ class TtsttApp(rumps.App):
             hotkey_label = f"단축키: {config.hotkey.modifier}+{config.hotkey.key}"
         self._hotkey_item = rumps.MenuItem(hotkey_label, callback=None)
         self._hotkey_item.set_callback(None)
+        self._repaste_item = rumps.MenuItem(
+            f"재붙여넣기: {config.hotkey.repaste_modifier}+{config.hotkey.repaste_key}",
+            callback=None,
+        )
+        self._repaste_item.set_callback(None)
         self._quit_item = rumps.MenuItem("종료", callback=self._on_quit)
 
         self.menu = [
@@ -55,6 +60,7 @@ class TtsttApp(rumps.App):
             None,  # separator
             self._device_menu,
             self._hotkey_item,
+            self._repaste_item,
             None,
             self._quit_item,
         ]
@@ -124,6 +130,13 @@ class TtsttApp(rumps.App):
         if not self.recorder.recording:
             return
         self._stop_and_process()
+
+    def on_repaste(self) -> None:
+        """재붙여넣기 핫키 콜백."""
+        if self._processing or self.recorder.recording:
+            return
+        if not clipboard.repaste_last():
+            print("[ttstt] 재붙여넣기할 텍스트 없음")
 
     def _start_recording(self) -> None:
         if not sounds.play(self.config.sound.start):
@@ -216,6 +229,9 @@ def main() -> None:
         hotkey_thread = threading.Thread(
             target=listen,
             args=(config.hotkey.modifier, config.hotkey.key, app.on_toggle),
+            kwargs={"extra_bindings": [
+                (config.hotkey.repaste_modifier, config.hotkey.repaste_key, app.on_repaste),
+            ]},
             daemon=True,
         )
     hotkey_thread.start()

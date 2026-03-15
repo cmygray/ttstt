@@ -22,6 +22,7 @@ _KEY_CODES: dict[str, int] = {
     "z": 0x06,
     "\\": 0x2A,
     "space": 0x31,
+    ";": 0x29,
 }
 
 # modifier 문자열 → CGEventFlag 매핑
@@ -56,19 +57,32 @@ def check_accessibility() -> bool:
     return True
 
 
-def listen(modifier: str, key: str, on_toggle: Callable[[], None]) -> None:
-    """글로벌 핫키를 등록하고 이벤트 루프를 실행한다. (토글 모드)
+Binding = tuple[str, str, Callable[[], None]]
+
+
+def listen(modifier: str, key: str, on_toggle: Callable[[], None],
+           extra_bindings: list[Binding] | None = None) -> None:
+    """글로벌 핫키를 등록하고 이벤트 루프를 실행한다.
 
     Args:
         modifier: 'cmd+shift' 형태의 modifier 문자열.
         key: 알파벳 소문자 한 글자.
         on_toggle: 핫키가 눌렸을 때 호출할 콜백.
+        extra_bindings: 추가 (modifier, key, callback) 바인딩 목록.
     """
-    target_keycode = _KEY_CODES.get(key.lower())
-    if target_keycode is None:
-        raise ValueError(f"지원하지 않는 키: {key}")
+    # 모든 바인딩을 (keycode, flags, callback) 으로 변환
+    bindings: list[tuple[int, int, Callable[[], None]]] = []
 
-    required_flags = _parse_modifier(modifier)
+    def _add_binding(mod: str, k: str, cb: Callable[[], None]) -> None:
+        keycode = _KEY_CODES.get(k.lower())
+        if keycode is None:
+            raise ValueError(f"지원하지 않는 키: {k}")
+        bindings.append((keycode, _parse_modifier(mod), cb))
+
+    _add_binding(modifier, key, on_toggle)
+    for mod, k, cb in extra_bindings or []:
+        _add_binding(mod, k, cb)
+
     all_modifier_mask = (
         Quartz.kCGEventFlagMaskCommand
         | Quartz.kCGEventFlagMaskShift
@@ -89,9 +103,10 @@ def listen(modifier: str, key: str, on_toggle: Callable[[], None]) -> None:
         )
         flags = Quartz.CGEventGetFlags(event) & all_modifier_mask
 
-        if keycode == target_keycode and flags == required_flags:
-            on_toggle()
-            return None  # 이벤트 소비
+        for target_keycode, required_flags, cb in bindings:
+            if keycode == target_keycode and flags == required_flags:
+                cb()
+                return None  # 이벤트 소비
 
         return event
 
@@ -120,7 +135,10 @@ def listen(modifier: str, key: str, on_toggle: Callable[[], None]) -> None:
     )
     Quartz.CGEventTapEnable(tap, True)
 
-    print(f"ttstt 대기 중... ({modifier}+{key} 로 녹음 토글)")
+    labels = [f"{modifier}+{key} 로 녹음 토글"]
+    for mod, k, _ in extra_bindings or []:
+        labels.append(f"{mod}+{k} 로 재붙여넣기")
+    print(f"ttstt 대기 중... ({', '.join(labels)})")
     Quartz.CFRunLoopRun()
 
 

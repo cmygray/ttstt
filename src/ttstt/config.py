@@ -33,7 +33,7 @@ class ASRConfig:
 @dataclass
 class PostprocessConfig:
     enabled: bool = False
-    model: str = "mlx-community/Qwen3.5-4B-4bit"
+    model: str = "mlx-community/Qwen3-1.7B-4bit"
     max_tokens: int = 4096
     system_prompt: str = DEFAULT_POSTPROCESS_PROMPT
 
@@ -44,6 +44,8 @@ class HotkeyConfig:
     modifier: str = "cmd+shift"
     key: str = "space"
     hold_threshold: float = 0.15
+    repaste_modifier: str = "cmd+shift"
+    repaste_key: str = ";"
 
 
 @dataclass
