@@ -23,6 +23,20 @@ uv run ttstt-meeting
 - `출력:` 뒤의 파일 경로 → 전사 파일 경로
 - `PID:` 뒤의 숫자 → 종료 시 사용
 
+### mdgate 연동 (optional)
+
+ttstt-meeting이 시작되고 전사 파일 경로를 확보한 뒤, mdgate가 설치되어 있으면 라이브 노트를 모바일에서 볼 수 있도록 서빙합니다.
+
+1. mdgate 존재 여부 확인: `which mdgate`
+2. 있으면 전사 파일과 라이브 노트를 `--share` 옵션으로 서빙 (zrok 공개 URL 생성):
+   ```
+   mdgate --share <전사 파일 경로>
+   mdgate --share meeting_notes_live.md
+   ```
+   mdgate 서버가 이미 실행 중이면 자동으로 파일만 등록됩니다 (register API).
+3. 출력된 zrok URL을 사용자에게 안내 (인터넷 어디서든 접근 가능)
+4. mdgate가 없으면 스킵하고, 사용자에게 "mdgate가 설치되면 모바일에서 라이브 노트를 볼 수 있습니다"라고 간단히 안내
+
 ## 3단계: 모니터링 & 라이브 노트 작성
 
 **30초 간격**으로 전사 파일을 Read 도구로 읽어서 새로 추가된 청크를 확인하세요.
@@ -62,6 +76,7 @@ uv run ttstt-meeting
 1. ttstt-meeting 프로세스를 종료: `kill <PID>`
 2. 마지막 전사 파일을 읽고 남은 청크 처리
 3. 라이브 노트에 회의 종료 시각과 전체 요약 추가
+4. mdgate가 실행 중이었으면 `mdgate --stop`으로 종료
 
 ## 주의사항
 

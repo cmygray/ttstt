@@ -179,6 +179,7 @@ def listen_tap_hold(
 
     repaste_keycode = _KEY_CODES.get(repaste_key) if on_repaste else None
 
+    lock = threading.Lock()
     state = {
         "pressed": False,
         "holding": False,
@@ -201,14 +202,19 @@ def listen_tap_hold(
 
     def _start_if_held():
         """타이머 콜백: threshold 경과 후에도 키가 눌려있으면 녹음 시작."""
-        if state["pressed"] and not state["holding"]:
-            state["holding"] = True
-            # 미리 주입된 키를 백스페이스로 제거
-            bs_down = Quartz.CGEventCreateKeyboardEvent(None, 0x33, True)
-            bs_up = Quartz.CGEventCreateKeyboardEvent(None, 0x33, False)
-            Quartz.CGEventPost(Quartz.kCGHIDEventTap, bs_down)
-            Quartz.CGEventPost(Quartz.kCGHIDEventTap, bs_up)
-            on_start()
+        with lock:
+            print(f"[hotkey] timer fired: pressed={state['pressed']}, holding={state['holding']}", flush=True)
+            if state["pressed"] and not state["holding"]:
+                state["holding"] = True
+            else:
+                return
+        # lock 밖에서 부수효과 실행 (lock 점유 최소화)
+        bs_down = Quartz.CGEventCreateKeyboardEvent(None, 0x33, True)
+        bs_up = Quartz.CGEventCreateKeyboardEvent(None, 0x33, False)
+        Quartz.CGEventPost(Quartz.kCGHIDEventTap, bs_down)
+        Quartz.CGEventPost(Quartz.kCGHIDEventTap, bs_up)
+        print("[hotkey] on_start()", flush=True)
+        on_start()
 
     def callback(proxy, event_type, event, refcon):
         if event_type == Quartz.kCGEventTapDisabledByTimeout:
@@ -294,18 +300,25 @@ def listen_tap_hold(
             return None
 
         elif event_type == Quartz.kCGEventKeyUp:
-            # modifier 상태의 keyUp이고 우리가 추적 중이 아니면 통과
-            if not state["pressed"] and not state["holding"]:
-                return event
+            with lock:
+                print(f"[hotkey] keyUp: pressed={state['pressed']}, holding={state['holding']}", flush=True)
+                # modifier 상태의 keyUp이고 우리가 추적 중이 아니면 통과
+                if not state["pressed"] and not state["holding"]:
+                    print("[hotkey] keyUp: not tracked, passing through", flush=True)
+                    return event
 
-            state["pressed"] = False
-            if state["timer"]:
-                state["timer"].cancel()
-                state["timer"] = None
+                state["pressed"] = False
+                if state["timer"]:
+                    state["timer"].cancel()
+                    state["timer"] = None
 
-            if state["holding"]:
+                was_holding = state["holding"]
+                if was_holding:
+                    state["holding"] = False
+
+            if was_holding:
                 # 홀드 해제 → 녹음 중지
-                state["holding"] = False
+                print("[hotkey] on_stop()", flush=True)
                 on_stop()
                 return None
             else:
