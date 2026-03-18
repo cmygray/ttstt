@@ -10,6 +10,9 @@ import threading
 import time
 from collections.abc import Callable
 
+import ctypes
+import ctypes.util
+
 import Quartz
 
 # ANSI 가상 키코드 매핑
@@ -48,13 +51,40 @@ def _parse_modifier(modifier_str: str) -> int:
 def check_accessibility() -> bool:
     """접근성 권한이 부여되었는지 확인한다.
 
-    권한이 없으면 시스템 설정 다이얼로그를 트리거한다.
+    권한이 없으면 macOS가 시스템 설정 접근성 패널을 자동으로 열어준다.
     """
-    trusted = Quartz.CGPreflightListenEventAccess()
-    if not trusted:
-        Quartz.CGRequestListenEventAccess()
-        return False
-    return True
+    _cf = ctypes.cdll.LoadLibrary(ctypes.util.find_library("CoreFoundation"))
+    _as = ctypes.cdll.LoadLibrary(
+        "/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices"
+    )
+
+    # kAXTrustedCheckOptionPrompt CFString 상수
+    prompt_key = ctypes.c_void_p.in_dll(_as, "kAXTrustedCheckOptionPrompt")
+
+    # CFDictionary 생성: {kAXTrustedCheckOptionPrompt: kCFBooleanTrue}
+    cf_true = ctypes.c_void_p.in_dll(_cf, "kCFBooleanTrue")
+
+    _cf.CFDictionaryCreate.restype = ctypes.c_void_p
+    _cf.CFDictionaryCreate.argtypes = [
+        ctypes.c_void_p,  # allocator
+        ctypes.POINTER(ctypes.c_void_p),  # keys
+        ctypes.POINTER(ctypes.c_void_p),  # values
+        ctypes.c_long,  # numValues
+        ctypes.c_void_p,  # keyCallBacks
+        ctypes.c_void_p,  # valueCallBacks
+    ]
+    keys = (ctypes.c_void_p * 1)(prompt_key)
+    values = (ctypes.c_void_p * 1)(cf_true)
+    options = _cf.CFDictionaryCreate(None, keys, values, 1, None, None)
+
+    _as.AXIsProcessTrustedWithOptions.restype = ctypes.c_bool
+    _as.AXIsProcessTrustedWithOptions.argtypes = [ctypes.c_void_p]
+    trusted = _as.AXIsProcessTrustedWithOptions(options)
+
+    _cf.CFRelease.argtypes = [ctypes.c_void_p]
+    _cf.CFRelease(options)
+
+    return trusted
 
 
 Binding = tuple[str, str, Callable[[], None]]

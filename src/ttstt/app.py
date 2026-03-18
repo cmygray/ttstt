@@ -209,13 +209,6 @@ def main() -> None:
     config = load_config()
 
     if not check_accessibility():
-        rumps.alert(
-            title="ttstt — 접근성 권한 필요",
-            message=(
-                "시스템 설정 > 개인 정보 보호 및 보안 > 접근성에서 "
-                "ttstt를 허용해주세요.\n\n권한을 부여한 후 다시 실행해주세요."
-            ),
-        )
         sys.exit(1)
 
     app = TtsttApp(config)
