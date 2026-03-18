@@ -57,6 +57,11 @@ class AudioConfig:
 
 
 @dataclass
+class AppearanceConfig:
+    icon_theme: str = "speech-bubble"  # "speech-bubble" 또는 "blob"
+
+
+@dataclass
 class SoundConfig:
     start: str = "Blow"
     stop: str = "Submarine"
@@ -93,6 +98,7 @@ class Config:
     postprocess: PostprocessConfig = field(default_factory=PostprocessConfig)
     hotkey: HotkeyConfig = field(default_factory=HotkeyConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
+    appearance: AppearanceConfig = field(default_factory=AppearanceConfig)
     sound: SoundConfig = field(default_factory=SoundConfig)
     meeting: MeetingConfig = field(default_factory=MeetingConfig)
 
@@ -108,7 +114,7 @@ def load_config(path: Path | None = None) -> Config:
     with open(path, "rb") as f:
         data = tomllib.load(f)
 
-    for section in ("asr", "postprocess", "hotkey", "audio", "sound"):
+    for section in ("asr", "postprocess", "hotkey", "audio", "appearance", "sound"):
         if section in data:
             sub = getattr(config, section)
             for k, v in data[section].items():
@@ -128,8 +134,20 @@ def load_config(path: Path | None = None) -> Config:
     return config
 
 
-def save_hotkey_config(hotkey: HotkeyConfig, path: Path | None = None) -> None:
-    """[hotkey] 섹션만 config.toml에 저장한다. 다른 섹션은 보존."""
+def _save_section(text: str, section_name: str, section_toml: str) -> str:
+    """TOML 텍스트에서 특정 섹션을 교체하거나 추가한다."""
+    pattern = rf"\[{re.escape(section_name)}\]\n(?:(?!\n\[).)*"
+    if re.search(pattern, text, re.DOTALL):
+        return re.sub(pattern, section_toml.rstrip(), text, flags=re.DOTALL)
+    return text.rstrip() + "\n\n" + section_toml
+
+
+def save_settings(
+    hotkey: HotkeyConfig,
+    appearance: AppearanceConfig,
+    path: Path | None = None,
+) -> None:
+    """[hotkey]와 [appearance] 섹션을 config.toml에 저장한다."""
     path = path or CONFIG_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -142,17 +160,12 @@ def save_hotkey_config(hotkey: HotkeyConfig, path: Path | None = None) -> None:
         f'repaste_modifier = "{hotkey.repaste_modifier}"\n'
         f'repaste_key = "{hotkey.repaste_key}"\n'
     )
+    appearance_toml = (
+        "[appearance]\n"
+        f'icon_theme = "{appearance.icon_theme}"\n'
+    )
 
-    if not path.exists():
-        path.write_text(hotkey_toml)
-        return
-
-    text = path.read_text()
-    # [hotkey] 섹션을 찾아 교체 (다음 [섹션] 또는 EOF까지)
-    pattern = r"\[hotkey\]\n(?:(?!\n\[).)*"
-    if re.search(pattern, text, re.DOTALL):
-        text = re.sub(pattern, hotkey_toml.rstrip(), text, flags=re.DOTALL)
-    else:
-        text = text.rstrip() + "\n\n" + hotkey_toml
-
+    text = path.read_text() if path.exists() else ""
+    text = _save_section(text, "hotkey", hotkey_toml)
+    text = _save_section(text, "appearance", appearance_toml)
     path.write_text(text)

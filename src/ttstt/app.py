@@ -12,24 +12,27 @@ from __future__ import annotations
 import fcntl
 import sys
 import threading
+from pathlib import Path
 
 import rumps
 
 from ttstt import asr, clipboard, postprocess, sounds
 from ttstt.audio import Recorder, list_input_devices
-from ttstt.config import Config, HotkeyConfig, load_config, save_hotkey_config
+from ttstt.config import Config, load_config, save_settings
 from ttstt.hotkey import check_accessibility, listen, listen_tap_hold
 
 
 class TtsttApp(rumps.App):
     """ttstt 메뉴바 앱."""
 
-    ICON_IDLE = "🎤"
-    ICON_RECORDING = "⏺"
-    ICON_PROCESSING = "⏳"
+    _ICONS_BASE = Path(__file__).parent / "icons"
 
     def __init__(self, config: Config):
-        super().__init__("ttstt", title=self.ICON_IDLE, quit_button=None)
+        icons_dir = self._resolve_icons_dir(config.appearance.icon_theme)
+        icon_path = str(icons_dir / "stt-idle@2x.png")
+        super().__init__("ttstt", icon=icon_path, title=None, quit_button=None)
+        is_template = config.appearance.icon_theme == "speech-bubble"
+        self.template = is_template
         self.config = config
         self.recorder = Recorder(
             sample_rate=config.audio.sample_rate,
@@ -50,8 +53,7 @@ class TtsttApp(rumps.App):
         )
         self._hotkey_item.set_callback(None)
         self._repaste_item = rumps.MenuItem(
-            f"재붙여넣기: {config.hotkey.repaste_modifier}+{config.hotkey.repaste_key}",
-            callback=None,
+            self._repaste_label(), callback=None,
         )
         self._repaste_item.set_callback(None)
         self._settings_item = rumps.MenuItem("설정...", callback=self._on_settings)
@@ -73,6 +75,12 @@ class TtsttApp(rumps.App):
         if hk.mode == "tap_hold":
             return f"단축키: {hk.key} 탭+홀드"
         return f"단축키: {hk.modifier}+{hk.key}"
+
+    def _repaste_label(self) -> str:
+        hk = self.config.hotkey
+        if hk.mode == "tap_hold":
+            return "재붙여넣기: \\ 더블탭"
+        return f"재붙여넣기: {hk.repaste_modifier}+{hk.repaste_key}"
 
     def start_hotkey(self) -> None:
         """핫키 리스너 스레드를 시작한다."""
@@ -108,28 +116,38 @@ class TtsttApp(rumps.App):
     def _restart_hotkey(self) -> None:
         if self._hotkey_stop_event:
             self._hotkey_stop_event.set()
-        if self._hotkey_thread:
-            self._hotkey_thread.join(timeout=2.0)
+        # join하지 않음 — 메인 스레드 블로킹 방지. 옛 스레드는 자연 종료됨.
         self.start_hotkey()
 
     def _on_settings(self, _) -> None:
         from ttstt.settings import show_settings
-        show_settings(self.config.hotkey, self._on_settings_saved)
+        show_settings(self.config.hotkey, self.config.appearance, self._on_settings_saved)
 
-    def _on_settings_saved(self, new_hotkey: HotkeyConfig) -> None:
-        # 기존 설정에서 threshold, repaste 설정 보존
-        new_hotkey.hold_threshold = self.config.hotkey.hold_threshold
-        new_hotkey.repaste_modifier = self.config.hotkey.repaste_modifier
-        new_hotkey.repaste_key = self.config.hotkey.repaste_key
-        save_hotkey_config(new_hotkey)
-        print(f"[ttstt] 핫키 설정 저장됨: {new_hotkey.mode}, {new_hotkey.key}")
-        rumps.notification(
-            title="ttstt",
-            subtitle="설정 저장 완료",
-            message="앱을 재시작하면 적용됩니다.",
-        )
-        self.recorder.close_stream()
-        rumps.quit_application()
+    def _on_settings_saved(self, result) -> None:
+        from ttstt.settings import SettingsResult
+        result: SettingsResult
+        result.hotkey.hold_threshold = self.config.hotkey.hold_threshold
+        result.hotkey.repaste_modifier = self.config.hotkey.repaste_modifier
+        result.hotkey.repaste_key = self.config.hotkey.repaste_key
+
+        self.config.hotkey = result.hotkey
+        self.config.appearance = result.appearance
+        save_settings(result.hotkey, result.appearance)
+
+        # 아이콘 즉시 변경
+        icons_dir = self._resolve_icons_dir(result.appearance.icon_theme)
+        self.icon = str(icons_dir / "stt-idle@2x.png")
+        self.template = result.appearance.icon_theme == "speech-bubble"
+
+        # 메뉴 레이블 갱신
+        self._hotkey_item.title = self._hotkey_label()
+        self._repaste_item.title = self._repaste_label()
+
+        # 핫키 재시작
+        self._restart_hotkey()
+
+        print(f"[ttstt] 설정 적용됨: theme={result.appearance.icon_theme}, "
+              f"mode={result.hotkey.mode}, key={result.hotkey.key}")
 
     def _on_quit(self, _) -> None:
         self.recorder.close_stream()
@@ -170,10 +188,17 @@ class TtsttApp(rumps.App):
         self.recorder.switch_device(sender.title)
         self._set_status("대기 중")
 
+    @classmethod
+    def _resolve_icons_dir(cls, theme: str) -> Path:
+        if theme == "blob":
+            return cls._ICONS_BASE / "blob-dark"
+        return cls._ICONS_BASE / "speech-bubble"
+
     def _set_status(self, text: str, icon: str | None = None) -> None:
         self._status_item.title = text
         if icon:
-            self.title = icon
+            icons_dir = self._resolve_icons_dir(self.config.appearance.icon_theme)
+            self.icon = str(icons_dir / icon)
 
     def on_toggle(self) -> None:
         """핫키 콜백. 녹음 시작/종료를 토글한다."""
@@ -208,13 +233,13 @@ class TtsttApp(rumps.App):
         if not sounds.play(self.config.sound.start):
             print(f"⚠ 사운드 '{self.config.sound.start}'을(를) 찾을 수 없습니다.")
         self.recorder.start()
-        self._set_status("녹음 중...", self.ICON_RECORDING)
+        self._set_status("녹음 중...", "stt-recording@2x.png")
 
     def _stop_and_process(self) -> None:
         audio_data = self.recorder.stop()
         if not sounds.play(self.config.sound.stop):
             print(f"⚠ 사운드 '{self.config.sound.stop}'을(를) 찾을 수 없습니다.")
-        self._set_status("인식 중...", self.ICON_PROCESSING)
+        self._set_status("인식 중...", "stt-processing@2x.png")
 
         self._processing = True
         thread = threading.Thread(target=self._process_pipeline, args=(audio_data,))
@@ -225,7 +250,7 @@ class TtsttApp(rumps.App):
         try:
             if audio_data.size == 0:
                 print("[ttstt] 녹음 데이터 없음 (0 frames)")
-                self._set_status("녹음 없음", self.ICON_IDLE)
+                self._set_status("녹음 없음", "stt-idle@2x.png")
                 return
 
             duration = len(audio_data) / self.config.audio.sample_rate
@@ -235,20 +260,20 @@ class TtsttApp(rumps.App):
             print(f"[ttstt] ASR 결과: '{text}'")
 
             if not text:
-                self._set_status("인식 실패", self.ICON_IDLE)
+                self._set_status("인식 실패", "stt-idle@2x.png")
                 return
 
             if self.config.postprocess.enabled:
-                self._set_status("교정 중...", self.ICON_PROCESSING)
+                self._set_status("교정 중...", "stt-processing@2x.png")
                 text = postprocess.correct(text, self.config.postprocess)
                 print(f"[ttstt] 교정 결과: '{text}'")
 
             clipboard.paste_text(text)
-            self._set_status("대기 중", self.ICON_IDLE)
+            self._set_status("대기 중", "stt-idle@2x.png")
 
         except Exception as e:
             print(f"[ttstt] 오류: {e}")
-            self._set_status(f"오류: {e}", self.ICON_IDLE)
+            self._set_status(f"오류: {e}", "stt-idle@2x.png")
         finally:
             self._processing = False
 

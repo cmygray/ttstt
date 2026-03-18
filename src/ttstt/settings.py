@@ -7,6 +7,7 @@ pyobjc AppKit으로 네이티브 NSWindow를 생성한다.
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 
 import objc
 from AppKit import (
@@ -22,11 +23,20 @@ from AppKit import (
     NSWindowStyleMaskTitled,
 )
 
-from ttstt.config import HotkeyConfig
+from ttstt.config import AppearanceConfig, HotkeyConfig
 from ttstt.hotkey import KEY_OPTIONS, MODIFIER_OPTIONS
+
+ICON_THEMES = ["speech-bubble", "blob"]
+ICON_THEME_LABELS = {"speech-bubble": "말풍선", "blob": "블롭"}
 
 # 모듈 레벨에서 ObjC 객체 참조를 유지하여 GC 방지
 _refs: dict = {}
+
+
+@dataclass
+class SettingsResult:
+    hotkey: HotkeyConfig
+    appearance: AppearanceConfig
 
 
 def _make_label(text: str, x: float, y: float, width: float = 80) -> NSTextField:
@@ -62,17 +72,21 @@ class _Delegate(NSObject):
 
 def show_settings(
     hotkey_config: HotkeyConfig,
-    on_save: Callable[[HotkeyConfig], None],
+    appearance_config: AppearanceConfig,
+    on_save: Callable[[SettingsResult], None],
 ) -> None:
     """설정 NSWindow를 표시한다."""
-    # 이전 창이 열려있으면 앞으로 가져오기
+    # 이전 창이 있으면 재사용 (GC로 인한 ObjC 크래시 방지)
     if "window" in _refs:
         win = _refs["window"]
         if win.isVisible():
             win.orderFrontRegardless()
             return
+        # 숨겨진 창 다시 표시 (새 객체 생성 없음)
+        win.orderFrontRegardless()
+        return
 
-    width, height = 320, 200
+    width, height = 320, 240
     style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
     window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
         NSMakeRect(0, 0, width, height), style, 2, False
@@ -81,10 +95,22 @@ def show_settings(
     window.center()
 
     content = window.contentView()
-    control_x, control_w, row_h = 110, 180, 40
+    control_x, control_w, row_h = 110, 180, 36
+
+    # 아이콘 테마
+    y = height - 45
+    content.addSubview_(_make_label("아이콘", 20, y))
+    theme_popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
+        NSMakeRect(control_x, y - 2, control_w, 26), False
+    )
+    theme_labels = [ICON_THEME_LABELS[t] for t in ICON_THEMES]
+    theme_popup.addItemsWithTitles_(theme_labels)
+    current_label = ICON_THEME_LABELS.get(appearance_config.icon_theme, theme_labels[0])
+    theme_popup.selectItemWithTitle_(current_label)
+    content.addSubview_(theme_popup)
 
     # 모드
-    y = height - 50
+    y -= row_h
     content.addSubview_(_make_label("모드", 20, y))
     mode_popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
         NSMakeRect(control_x, y - 2, control_w, 26), False
@@ -121,13 +147,20 @@ def show_settings(
         modifier_popup.setEnabled_(is_toggle)
 
     def on_save_clicked(sender):
-        new_config = HotkeyConfig(
-            mode=mode_popup.titleOfSelectedItem(),
-            key=key_popup.titleOfSelectedItem(),
-            modifier=modifier_popup.titleOfSelectedItem(),
+        # 테마 라벨 → 테마 키로 변환
+        selected_label = theme_popup.titleOfSelectedItem()
+        theme_key = next(k for k, v in ICON_THEME_LABELS.items() if v == selected_label)
+
+        result = SettingsResult(
+            hotkey=HotkeyConfig(
+                mode=mode_popup.titleOfSelectedItem(),
+                key=key_popup.titleOfSelectedItem(),
+                modifier=modifier_popup.titleOfSelectedItem(),
+            ),
+            appearance=AppearanceConfig(icon_theme=theme_key),
         )
-        on_save(new_config)
-        window.close()
+        on_save(result)
+        window.orderOut_(None)  # close() 대신 숨김 — GC 방지
 
     delegate = _Delegate.alloc().init()
     delegate.setup(on_mode_changed, on_save_clicked)
@@ -136,7 +169,7 @@ def show_settings(
     mode_popup.setAction_(b"onModeChanged:")
 
     # 저장 버튼
-    y -= row_h + 5
+    y -= row_h + 10
     save_btn = NSButton.alloc().initWithFrame_(NSMakeRect(width - 100, y, 80, 32))
     save_btn.setTitle_("저장")
     save_btn.setBezelStyle_(NSBezelStyleRounded)
@@ -147,6 +180,6 @@ def show_settings(
     # 모듈 레벨에서 강한 참조 유지 (GC 방지)
     _refs["window"] = window
     _refs["delegate"] = delegate
-    _refs["popups"] = (mode_popup, key_popup, modifier_popup)
+    _refs["popups"] = (theme_popup, mode_popup, key_popup, modifier_popup)
 
     window.orderFrontRegardless()

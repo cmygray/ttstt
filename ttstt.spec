@@ -21,7 +21,9 @@ a = Analysis(
     ["src/ttstt/__main__.py"],
     pathex=[],
     binaries=mlx_binaries + mlx_audio_binaries + mlx_lm_binaries,
-    datas=mlx_datas + mlx_audio_datas + mlx_lm_datas,
+    datas=mlx_datas + mlx_audio_datas + mlx_lm_datas + [
+        ("src/ttstt/icons", "ttstt/icons"),
+    ],
     hiddenimports=[
         "sounddevice",
         "numpy",
