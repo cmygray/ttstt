@@ -138,7 +138,8 @@ def _save_section(text: str, section_name: str, section_toml: str) -> str:
     """TOML 텍스트에서 특정 섹션을 교체하거나 추가한다."""
     pattern = rf"\[{re.escape(section_name)}\]\n(?:(?!\n\[).)*"
     if re.search(pattern, text, re.DOTALL):
-        return re.sub(pattern, section_toml.rstrip(), text, flags=re.DOTALL)
+        # lambda를 사용하여 치환 문자열의 역참조 해석 방지
+        return re.sub(pattern, lambda _: section_toml.rstrip(), text, flags=re.DOTALL)
     return text.rstrip() + "\n\n" + section_toml
 
 
