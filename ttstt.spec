@@ -73,7 +73,7 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name="ttstt.app",
-    icon=None,  # TODO: 앱 아이콘 추가
+    icon="ttstt.icns",
     bundle_identifier="com.cmygray.ttstt",
     info_plist={
         "CFBundleName": "ttstt",
