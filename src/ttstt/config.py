@@ -46,7 +46,7 @@ class HotkeyConfig:
     key: str = "space"
     hold_threshold: float = 0.20
     repaste_modifier: str = "cmd+shift"
-    repaste_key: str = ";"
+    repaste_key: str = "\\"
 
 
 @dataclass
@@ -58,7 +58,7 @@ class AudioConfig:
 
 @dataclass
 class AppearanceConfig:
-    icon_theme: str = "speech-bubble"  # "speech-bubble" 또는 "blob"
+    icon_theme: str = "blob"  # "speech-bubble" 또는 "blob"
 
 
 @dataclass
