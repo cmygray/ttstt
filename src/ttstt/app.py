@@ -9,6 +9,7 @@ rumps 메뉴바 앱으로 동작한다.
 
 from __future__ import annotations
 
+import fcntl
 import sys
 import threading
 
@@ -187,8 +188,24 @@ class TtsttApp(rumps.App):
             self._processing = False
 
 
+_lock_file = None
+
+
+def _acquire_single_instance() -> None:
+    """파일 락으로 단일 인스턴스를 보장한다. 프로세스 종료 시 OS가 자동 해제."""
+    global _lock_file
+    lock_path = "/tmp/ttstt.lock"
+    _lock_file = open(lock_path, "w")
+    try:
+        fcntl.flock(_lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        print("[ttstt] 이미 실행 중입니다.")
+        sys.exit(1)
+
+
 def main() -> None:
     """엔트리포인트."""
+    _acquire_single_instance()
     config = load_config()
 
     if not check_accessibility():

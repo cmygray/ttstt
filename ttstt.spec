@@ -8,23 +8,30 @@
     dist/ttstt.app
 """
 
+from PyInstaller.utils.hooks import collect_all
+
 block_cipher = None
+
+# MLX 관련 패키지는 네이티브 확장 + 데이터 파일이 있어서 전체 수집 필요
+mlx_datas, mlx_binaries, mlx_hiddenimports = collect_all("mlx")
+mlx_audio_datas, mlx_audio_binaries, mlx_audio_hiddenimports = collect_all("mlx_audio")
+mlx_lm_datas, mlx_lm_binaries, mlx_lm_hiddenimports = collect_all("mlx_lm")
 
 a = Analysis(
     ["src/ttstt/__main__.py"],
     pathex=[],
-    binaries=[],
-    datas=[],
+    binaries=mlx_binaries + mlx_audio_binaries + mlx_lm_binaries,
+    datas=mlx_datas + mlx_audio_datas + mlx_lm_datas,
     hiddenimports=[
-        "mlx_audio",
-        "mlx_audio.stt",
-        "mlx_lm",
         "sounddevice",
         "numpy",
         "Quartz",
         "AppKit",
         "Foundation",
-    ],
+    ]
+    + mlx_hiddenimports
+    + mlx_audio_hiddenimports
+    + mlx_lm_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
